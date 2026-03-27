@@ -1,0 +1,18 @@
+{
+  "scripts": {
+    "worker": "tsx src/worker.ts",
+    "start-workflow": "tsx src/startWorkflow.ts"
+  },
+  "dependencies": {
+    "@temporalio/client": "^1.15.0",
+    "@temporalio/worker": "^1.15.0",
+    "@temporalio/workflow": "^1.15.0",
+    "dotenv": "^17.3.1",
+    "openai": "^6.33.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  }
+}
