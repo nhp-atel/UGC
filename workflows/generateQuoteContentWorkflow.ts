@@ -18,7 +18,7 @@ import type {
   PostDraft,
 } from './generateQuoteContentTypes';
 
-import type * as activities from '../activities/generateQuoteContentActivities.ts';
+import type * as activities from '../activities/generateQuoteContentActivities';
 
 const {
   researchQuotes,

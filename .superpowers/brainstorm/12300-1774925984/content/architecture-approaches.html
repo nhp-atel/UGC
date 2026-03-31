@@ -1,0 +1,130 @@
+<h2>Agent Architecture Approaches</h2>
+<p class="subtitle">Three ways to structure the orchestrator + agent system. All use Temporal as the execution backbone.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Orchestrator as Temporal Workflow</h3>
+      <p>The orchestrator IS the Temporal workflow. It calls agents as activities, evaluates results inline, and decides next steps using workflow logic (if/else, loops). Agents are activity functions with internal quality loops.</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">Architecture A — Workflow-as-Orchestrator</div>
+        <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.6;">
+<pre style="margin:0;">
+Trigger
+  └─▶ Temporal Workflow (= Orchestrator)
+        │
+        ├─▶ callAgent("research", {topic, tone})
+        │     └─ ResearchAgent.run() ──▶ OpenAI (loop until quality ✓)
+        │
+        ├─▶ evaluate(researchResult)
+        │     └─ if quality < threshold → retry research
+        │
+        ├─▶ callAgent("creative", {quote, tone})
+        │     └─ CreativeAgent.run() ──▶ OpenAI (loop until quality ✓)
+        │
+        ├─▶ evaluate(creativeResult)
+        │     └─ if !cohesive → retry creative or re-research
+        │
+        ├─▶ callAgent("post", {quote, brief})
+        │     └─ PostAgent.run() ──▶ OpenAI (loop until quality ✓)
+        │
+        ├─▶ finalReview(all outputs)
+        │     └─ orchestrator LLM call: "is this cohesive?"
+        │
+        └─▶ saveDraft / publish
+</pre>
+        </div>
+      </div>
+      <div class="pros-cons" style="margin-top: 8px;">
+        <div class="pros"><h4>Pros</h4><ul><li>Simple — workflow IS the brain</li><li>Full Temporal durability for retries</li><li>Easy to debug (one workflow)</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Orchestrator logic is hardcoded TypeScript</li><li>Adding new routing requires code changes</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>LLM-Driven Orchestrator Agent</h3>
+      <p>A dedicated Director Agent (powered by LLM) decides what to do next. It receives context, picks which agent to call, evaluates results, and loops until satisfied. The Temporal workflow just executes what the Director decides.</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">Architecture B — LLM Director</div>
+        <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.6;">
+<pre style="margin:0;">
+Trigger
+  └─▶ Temporal Workflow
+        └─▶ DirectorAgent.run(input)     ◀── LLM-powered
+              │
+              ├─▶ thinks: "need quotes about discipline"
+              │     └─ tool_call: research({topic: "discipline"})
+              │           └─ ResearchAgent.run() ──▶ OpenAI
+              │
+              ├─▶ evaluates: "quote #2 is strongest"
+              │     └─ tool_call: select({quoteIndex: 2})
+              │
+              ├─▶ thinks: "need cinematic brief for this"
+              │     └─ tool_call: creative({quote, tone})
+              │           └─ CreativeAgent.run() ──▶ OpenAI
+              │
+              ├─▶ evaluates: "hook is weak, retry"
+              │     └─ tool_call: creative({quote, tone, feedback})
+              │
+              ├─▶ thinks: "now write the post"
+              │     └─ tool_call: post({quote, brief})
+              │
+              └─▶ thinks: "all good, save it"
+                    └─ tool_call: save({...})
+</pre>
+        </div>
+      </div>
+      <div class="pros-cons" style="margin-top: 8px;">
+        <div class="pros"><h4>Pros</h4><ul><li>Most truly "agentic" — LLM reasons about what to do</li><li>Can adapt to unexpected situations</li><li>Extensible via tools, not code rewrites</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>More expensive (extra LLM calls for routing)</li><li>Harder to predict behavior</li><li>More complex to debug</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Hybrid — Structured Flow + LLM Quality Gates</h3>
+      <p>The workflow defines the sequence (like A), but quality evaluation at each step is done by an LLM call (like B). The orchestrator doesn't freely choose what to do — it follows the pipeline but uses AI judgment at decision points.</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">Architecture C — Hybrid</div>
+        <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.6;">
+<pre style="margin:0;">
+Trigger
+  └─▶ Temporal Workflow (fixed sequence)
+        │
+        ├─▶ ResearchAgent.run({topic})
+        │     └─ internal loop: generate → evaluate → retry
+        │
+        ├─▶ QualityGate({research, context})    ◀── LLM judge
+        │     └─ "pass" / "retry research" / "adjust params"
+        │
+        ├─▶ CreativeAgent.run({quote, tone})
+        │     └─ internal loop: generate → evaluate → retry
+        │
+        ├─▶ QualityGate({creative, research})   ◀── LLM judge
+        │     └─ "pass" / "retry creative" / "re-research"
+        │
+        ├─▶ PostAgent.run({quote, brief})
+        │     └─ internal loop: generate → evaluate → retry
+        │
+        ├─▶ FinalReview({all outputs})          ◀── LLM judge
+        │     └─ "publish" / "revise X"
+        │
+        └─▶ saveDraft / publish
+</pre>
+        </div>
+      </div>
+      <div class="pros-cons" style="margin-top: 8px;">
+        <div class="pros"><h4>Pros</h4><ul><li>Predictable flow, intelligent judgment</li><li>Best of both: structure + AI quality</li><li>Easier to debug than full LLM routing</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Less flexible than full LLM orchestrator</li><li>Quality gates add latency + cost</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top: 24px;"><strong>Recommendation:</strong> Option B is the most genuinely agentic and aligns with your goal of an orchestrator agent. It's the architecture that best demonstrates AI agent patterns.</p>

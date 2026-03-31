@@ -9,7 +9,7 @@ import type {
 } from './generateQuoteContentTypes';
 
 export interface GenerateQuoteContentResult {
-  workflowStatus: 'COMPLETED' | 'FAILED' | 'AWAITING_APPROVAL' | 'PUBLISHED';
+  workflowStatus: 'COMPLETED' | 'FAILED' | 'AWAITING_APPROVAL' | 'PUBLISHED' | 'CANCELLED' | 'REJECTED';
   requestId: string;
   selectedQuote?: SelectedQuote;
   creativeBrief?: CreativeBrief;

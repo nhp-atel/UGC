@@ -1,0 +1,194 @@
+<h2>Agent Designs — Internal Structure</h2>
+<p class="subtitle">Each agent follows the same pattern: system prompt + execute + self-evaluate + retry loop</p>
+
+<div class="section">
+  <h3>Base Agent Pattern (all agents follow this)</h3>
+  <div class="mockup">
+    <div class="mockup-header">BaseAgent — Shared Structure</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7;">
+<pre style="margin:0;">
+class BaseAgent {
+  name: string
+  systemPrompt: string
+  maxRetries: number (default: 3)
+  qualityCriteria: string[]
+
+  async run(input, feedbackFromDirector?):
+    for attempt in 1..maxRetries:
+      result = await this.execute(input, feedbackFromDirector)
+      evaluation = await this.evaluate(result)
+
+      if evaluation.pass:
+        return { result, evaluation, attempts: attempt }
+
+      feedbackFromDirector = evaluation.feedback  ← feed back into next attempt
+
+    return { result, evaluation, attempts: maxRetries, qualityWarning: true }
+}
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 32px;">
+  <h3>1. Director Agent</h3>
+  <div class="mockup">
+    <div class="mockup-header">DirectorAgent — The Orchestrator Brain</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7;">
+<pre style="margin:0;">
+DirectorAgent
+  ├── Model: gpt-4o (needs strong reasoning)
+  ├── System Prompt:
+  │     "You are a content director for short-form video.
+  │      Your job is to produce the highest quality content
+  │      by coordinating specialist agents.
+  │
+  │      Available tools: research_quotes, build_creative_brief,
+  │      write_post, generate_video, save_draft, publish
+  │
+  │      Process:
+  │      1. Research quotes for the topic
+  │      2. Evaluate quality — retry if needed
+  │      3. Build a creative brief around the best quote
+  │      4. Evaluate cohesion — does brief match tone/quote?
+  │      5. Write the post copy
+  │      6. Final review — is everything cohesive?
+  │      7. Save the draft
+  │
+  │      You may call any tool multiple times.
+  │      You may pass feedback to agents to improve output."
+  │
+  ├── Tools (OpenAI function calling):
+  │     ├── research_quotes({topic, tone, count, feedback?})
+  │     ├── build_creative_brief({quote, tone, platform, duration, feedback?})
+  │     ├── write_post({quote, brief, hashtags, feedback?})
+  │     ├── generate_video({quote, brief})
+  │     ├── save_draft({quote, brief, assets, post})
+  │     └── publish({draftId})
+  │
+  ├── Runs as: OpenAI chat completion loop
+  │     while hasMoreToolCalls:
+  │       response = openai.chat(messages, tools)
+  │       execute tool calls → append results
+  │       continue until model says "done"
+  │
+  └── Returns: { selectedQuote, creativeBrief, assets, post, directorLog }
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 32px;">
+  <h3>2. Research Agent</h3>
+  <div class="mockup">
+    <div class="mockup-header">ResearchAgent — Quote Discovery & Selection</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7;">
+<pre style="margin:0;">
+ResearchAgent extends BaseAgent
+  ├── Model: gpt-4o-mini
+  ├── Responsibilities:
+  │     ├── Find 5+ relevant quotes on the topic
+  │     ├── Score each quote (relevance, impact, originality)
+  │     └── Select the single best quote with reasoning
+  │
+  ├── execute(input, feedback?):
+  │     → OpenAI call: "Find quotes about {topic} for {tone} {platform}"
+  │     → If feedback: "Previous attempt was rejected: {feedback}. Try different quotes."
+  │     → Returns: { candidates: QuoteCandidate[], selected: SelectedQuote }
+  │
+  ├── evaluate(result):
+  │     → OpenAI call: "Rate this quote selection 1-10 on:
+  │         - Relevance to topic
+  │         - Emotional impact for short-form video
+  │         - Originality (not overused)
+  │         - Attribution clarity
+  │        Pass if average >= 7"
+  │     → Returns: { pass: boolean, score: number, feedback: string }
+  │
+  └── Quality criteria:
+        ├── Quote must be relevant to topic
+        ├── Author attribution should be clear
+        ├── Score >= 7/10 average
+        └── Not a commonly overused quote
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 32px;">
+  <h3>3. Creative Brief Agent</h3>
+  <div class="mockup">
+    <div class="mockup-header">CreativeBriefAgent — Visual & Audio Direction</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7;">
+<pre style="margin:0;">
+CreativeBriefAgent extends BaseAgent
+  ├── Model: gpt-4o-mini
+  ├── Responsibilities:
+  │     ├── Create an attention-grabbing hook (first 2 seconds)
+  │     ├── Design visual concept matching tone
+  │     ├── Write voiceover script incorporating the quote
+  │     └── Define audio/music mood
+  │
+  ├── execute(input, feedback?):
+  │     → OpenAI call: "Create a creative brief for a {tone} {platform}
+  │        video featuring: '{quote}'. Duration: {duration}s."
+  │     → If feedback: incorporate Director's notes
+  │     → Returns: CreativeBrief { hook, visualConcept, voiceoverText, audioMood }
+  │
+  ├── evaluate(result):
+  │     → OpenAI call: "Rate this creative brief 1-10 on:
+  │         - Hook strength (would it stop a scroller?)
+  │         - Visual-quote coherence
+  │         - Voiceover naturalness
+  │         - Tone consistency with '{tone}'
+  │        Pass if average >= 7"
+  │     → Returns: { pass: boolean, score: number, feedback: string }
+  │
+  └── Quality criteria:
+        ├── Hook must be compelling in < 2 seconds
+        ├── Visual concept must match the requested tone
+        ├── Voiceover must flow naturally when read aloud
+        └── Score >= 7/10 average
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 32px;">
+  <h3>4. Post Agent</h3>
+  <div class="mockup">
+    <div class="mockup-header">PostAgent — Platform Copy & Metadata</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7;">
+<pre style="margin:0;">
+PostAgent extends BaseAgent
+  ├── Model: gpt-4o-mini
+  ├── Responsibilities:
+  │     ├── Write a catchy title (< 70 chars)
+  │     ├── Write engaging description
+  │     └── Select relevant hashtags (merge user-provided + generated)
+  │
+  ├── execute(input, feedback?):
+  │     → OpenAI call: "Write YouTube Shorts metadata for a {tone} video
+  │        about '{quote}'. Hook: '{hook}'."
+  │     → Returns: PostDraft { title, description, hashtags }
+  │
+  ├── evaluate(result):
+  │     → OpenAI call: "Rate this post metadata 1-10 on:
+  │         - Title click-worthiness
+  │         - Description engagement
+  │         - Hashtag relevance and discoverability
+  │         - Platform fit (YouTube Shorts conventions)
+  │        Pass if average >= 7"
+  │     → Returns: { pass: boolean, score: number, feedback: string }
+  │
+  └── Quality criteria:
+        ├── Title under 70 characters
+        ├── Description includes the quote naturally
+        ├── 5-8 hashtags, mix of broad + niche
+        └── Score >= 7/10 average
+</pre>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top: 32px;"><strong>Key pattern:</strong> Every agent has the same shape — execute() produces output, evaluate() judges it, and the loop retries up to maxRetries. The Director can also pass feedback from its own evaluation when re-invoking a tool.</p>

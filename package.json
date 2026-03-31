@@ -1,4 +1,6 @@
 {
+  "name": "ugc-quote-workflow",
+  "version": "0.1.0",
   "scripts": {
     "worker": "tsx src/worker.ts",
     "start-workflow": "tsx src/startWorkflow.ts"
@@ -11,6 +13,7 @@
     "openai": "^6.33.0"
   },
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2"

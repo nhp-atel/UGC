@@ -1,0 +1,159 @@
+<h2>Project Structure & Data Flow</h2>
+<p class="subtitle">How files are organized and how data moves through the system</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Folder Structure</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.8;">
+<pre style="margin:0;">
+src/
+  ├── worker.ts                  ← Temporal worker entry
+  ├── startWorkflow.ts           ← CLI trigger
+  │
+  ├── workflows/
+  │     ├── generateQuoteContentWorkflow.ts
+  │     ├── generateQuoteContentInputs.ts
+  │     ├── generateQuoteContentOutputs.ts
+  │     └── generateQuoteContentTypes.ts
+  │
+  ├── activities/
+  │     └── directorActivity.ts  ← single activity
+  │           calls DirectorAgent.run()
+  │
+  ├── agents/
+  │     ├── base/
+  │     │     ├── BaseAgent.ts   ← run/evaluate loop
+  │     │     └── types.ts       ← AgentResult, Evaluation
+  │     │
+  │     ├── DirectorAgent.ts     ← LLM orchestrator
+  │     ├── ResearchAgent.ts     ← quote research
+  │     ├── CreativeBriefAgent.ts← creative direction
+  │     └── PostAgent.ts         ← post copy
+  │
+  ├── tools/
+  │     ├── registry.ts          ← tool definitions
+  │     ├── researchTool.ts      ← wraps ResearchAgent
+  │     ├── creativeTool.ts      ← wraps CreativeBriefAgent
+  │     ├── postTool.ts          ← wraps PostAgent
+  │     ├── videoTool.ts         ← wraps video service
+  │     ├── saveTool.ts          ← wraps storage service
+  │     └── publishTool.ts       ← wraps YouTube service
+  │
+  ├── services/
+  │     ├── videoService.ts      ← [mocked] video gen
+  │     ├── storageService.ts    ← [mocked] persistence
+  │     └── youtubeService.ts    ← [mocked] publishing
+  │
+  └── lib/
+        ├── openAIClient.ts      ← OpenAI singleton
+        └── config.ts            ← env vars, constants
+</pre>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Responsibility Map</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.8;">
+<pre style="margin:0;">
+<strong>workflows/</strong>
+  Temporal workflow definition
+  Signals, queries, state
+  Calls directorActivity
+  Handles approval flow
+
+<strong>activities/</strong>
+  Single activity: runDirector
+  Bridges Temporal ↔ Agent layer
+  Handles activity-level timeout
+
+<strong>agents/</strong>
+  AI decision-making logic
+  BaseAgent: run → evaluate → retry
+  DirectorAgent: tool-calling loop
+  Sub-agents: domain-specific AI
+
+<strong>tools/</strong>
+  OpenAI function definitions
+  Bridges Director ↔ Sub-agents
+  Bridges Director ↔ Services
+  Tool registry for Director
+
+<strong>services/</strong>
+  External API integrations
+  No AI logic — pure I/O
+  Mocked now, real later
+
+<strong>lib/</strong>
+  Shared infrastructure
+  OpenAI client, config
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 32px;">
+  <h3>Data Flow — A Single Workflow Execution</h3>
+  <div class="mockup">
+    <div class="mockup-header">End-to-End Data Flow</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px; line-height: 1.7;">
+<pre style="margin:0;">
+startWorkflow.ts
+  │  { topic: "discipline", tone: "cinematic", platform: "youtube_shorts", ... }
+  ▼
+generateQuoteContentWorkflow.ts
+  │  state.stage = "RUNNING_DIRECTOR"
+  │  calls directorActivity(input)
+  ▼
+directorActivity.ts
+  │  creates DirectorAgent
+  │  calls director.run(input)
+  ▼
+DirectorAgent.ts ──── OpenAI chat completion loop ────────────────────────
+  │                                                                       │
+  │  Turn 1: "I need quotes about discipline"                             │
+  │  → tool_call: research_quotes({topic, tone, count: 5})                │
+  │     │                                                                 │
+  │     ▼  researchTool.ts → ResearchAgent.run()                          │
+  │        │  attempt 1: generate quotes → evaluate (8/10 ✓)              │
+  │        └─ returns: { candidates: [...], selected: {text, author} }    │
+  │                                                                       │
+  │  Turn 2: Director evaluates: "Good quote. Now creative brief."        │
+  │  → tool_call: build_creative_brief({quote, tone, platform})           │
+  │     │                                                                 │
+  │     ▼  creativeTool.ts → CreativeBriefAgent.run()                     │
+  │        │  attempt 1: generate brief → evaluate (6/10 ✗)               │
+  │        │  attempt 2: retry with feedback → evaluate (8/10 ✓)          │
+  │        └─ returns: { hook, visualConcept, voiceoverText, audioMood }  │
+  │                                                                       │
+  │  Turn 3: Director evaluates: "Hook is good. Write the post."          │
+  │  → tool_call: write_post({quote, brief, hashtags})                    │
+  │     │                                                                 │
+  │     ▼  postTool.ts → PostAgent.run()                                  │
+  │        │  attempt 1: generate post → evaluate (9/10 ✓)                │
+  │        └─ returns: { title, description, hashtags }                   │
+  │                                                                       │
+  │  Turn 4: Director evaluates: "Everything cohesive. Generate video."   │
+  │  → tool_call: generate_video({quote, brief})                          │
+  │     └─ videoTool.ts → videoService (mocked paths)                     │
+  │                                                                       │
+  │  Turn 5: "Save the draft."                                            │
+  │  → tool_call: save_draft({...all content...})                         │
+  │     └─ saveTool.ts → storageService (mocked)                          │
+  │                                                                       │
+  │  Turn 6: "All done." → returns final result                           │
+  ├───────────────────────────────────────────────────────────────────────┘
+  ▼
+Back to workflow
+  │  state = result from Director
+  │  if requireApproval → AWAITING_APPROVAL (signals)
+  │  if auto_publish → calls publishActivity
+  │  return GenerateQuoteContentResult
+  ▼
+startWorkflow.ts
+  │  logs final JSON result
+  ▼
+Done.
+</pre>
+    </div>
+  </div>
+</div>

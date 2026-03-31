@@ -1,0 +1,91 @@
+<h2>System Architecture — LLM-Driven Orchestrator</h2>
+<p class="subtitle">How the Director Agent, sub-agents, Temporal, and services fit together</p>
+
+<div class="mockup">
+  <div class="mockup-header">Full System Architecture</div>
+  <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.8;">
+<pre style="margin:0;">
+┌─────────────────────────────────────────────────────────────┐
+│                     TRIGGER LAYER                           │
+│   CLI starter  ·  Future: API server  ·  Scheduler          │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  TEMPORAL WORKFLOW                           │
+│                                                             │
+│   generateQuoteContentWorkflow                              │
+│     ├── runDirectorAgent(input)        ← single activity    │
+│     ├── handle signals (approve/reject/cancel)              │
+│     ├── approval gate (if required)                         │
+│     └── return final result                                 │
+│                                                             │
+│   Temporal provides: durability, retries, signals, queries  │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  DIRECTOR AGENT                              │
+│                                                             │
+│   LLM-powered orchestrator with tools                       │
+│                                                             │
+│   System prompt: "You are a content director..."            │
+│   Tools available:                                          │
+│     ├── research_quotes(topic, tone, count)                 │
+│     ├── build_creative_brief(quote, tone, platform)         │
+│     ├── write_post(quote, brief, platform)                  │
+│     ├── generate_video(quote, brief)       [mocked]         │
+│     ├── save_draft(all_content)            [mocked]         │
+│     └── publish(draft_id)                  [mocked]         │
+│                                                             │
+│   The Director:                                             │
+│     1. Receives input (topic, tone, platform, etc.)         │
+│     2. Decides which tool to call                           │
+│     3. Evaluates each result                                │
+│     4. Retries or adjusts if quality is low                 │
+│     5. Moves to next step when satisfied                    │
+│     6. Returns final assembled content                      │
+└────────┬──────────┬──────────┬──────────────────────────────┘
+         │          │          │
+         ▼          ▼          ▼
+┌──────────┐ ┌──────────┐ ┌──────────┐
+│ Research  │ │ Creative │ │   Post   │
+│  Agent    │ │  Agent   │ │  Agent   │
+│           │ │          │ │          │
+│ Internal  │ │ Internal │ │ Internal │
+│ quality   │ │ quality  │ │ quality  │
+│ loop      │ │ loop     │ │ loop     │
+└─────┬─────┘ └────┬─────┘ └────┬─────┘
+      │             │            │
+      ▼             ▼            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  EXTERNAL SERVICES                           │
+│                                                             │
+│   OpenAI API  ·  Video API (future)  ·  YouTube API (future)│
+│   Storage (future)  ·  TTS (future)                         │
+└─────────────────────────────────────────────────────────────┘
+</pre>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>Key Design Decisions</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 16px;">
+      <h4 style="margin-top:0;">Director = Activity</h4>
+      <p style="font-size: 14px;">The Director Agent runs inside a single Temporal activity. Temporal handles durability/retries at the workflow level. The Director handles intelligence inside.</p>
+    </div>
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 16px;">
+      <h4 style="margin-top:0;">Tool-Based Sub-Agents</h4>
+      <p style="font-size: 14px;">Each sub-agent is exposed to the Director as a tool. The Director calls tools via OpenAI function calling. Sub-agents have their own internal quality loops.</p>
+    </div>
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 16px;">
+      <h4 style="margin-top:0;">Double Quality Layer</h4>
+      <p style="font-size: 14px;">Layer 1: Each agent self-evaluates (try → check → retry). Layer 2: Director evaluates the result and can re-invoke with feedback.</p>
+    </div>
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 16px;">
+      <h4 style="margin-top:0;">Temporal Stays Simple</h4>
+      <p style="font-size: 14px;">The workflow only does: call Director → handle approval signals → return result. All intelligence lives in the agent layer, not the workflow.</p>
+    </div>
+  </div>
+</div>
