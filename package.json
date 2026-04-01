@@ -9,10 +9,12 @@
     "@temporalio/client": "^1.15.0",
     "@temporalio/worker": "^1.15.0",
     "@temporalio/workflow": "^1.15.0",
+    "better-sqlite3": "^12.8.0",
     "dotenv": "^17.3.1",
     "openai": "^6.33.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
