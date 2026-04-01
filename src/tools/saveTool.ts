@@ -10,14 +10,23 @@ export const saveToolDefinition: ChatCompletionTool = {
       type: 'object',
       properties: {
         requestId: { type: 'string' },
-        content: { type: 'object', description: 'The assembled content to save' },
+        selectedQuote: { type: 'object', description: 'The selected quote object' },
+        creativeBrief: { type: 'object', description: 'The creative brief object' },
+        assets: { type: 'object', description: 'The generated assets object' },
+        post: { type: 'object', description: 'The post draft object' },
       },
-      required: ['requestId', 'content'],
+      required: ['requestId', 'selectedQuote', 'creativeBrief', 'assets', 'post'],
     },
   },
 };
 
-export async function executeSaveTool(args: { requestId: string; content: Record<string, unknown> }): Promise<string> {
-  const result = await saveDraft(args.requestId, args.content);
+export async function executeSaveTool(args: {
+  requestId: string;
+  selectedQuote: Record<string, unknown>;
+  creativeBrief: Record<string, unknown>;
+  assets: Record<string, unknown>;
+  post: Record<string, unknown>;
+}): Promise<string> {
+  const result = saveDraft(args);
   return JSON.stringify(result);
 }
