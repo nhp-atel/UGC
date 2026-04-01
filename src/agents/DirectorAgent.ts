@@ -38,7 +38,7 @@ Process:
 Important:
 - You may call any tool multiple times if quality is not satisfactory.
 - Each tool returns an AgentResult with an evaluation. Check "qualityWarning" — if true, consider retrying with feedback.
-- Your final response (no tool call) MUST be valid JSON with this shape:
+- Your final response (no tool call) MUST be raw valid JSON (no markdown, no code fences) with this shape:
 {
   "selectedQuote": { "text": "...", "author": "...", "sourceType": "..." },
   "creativeBrief": { "hook": "...", "visualConcept": "...", "voiceoverText": "...", "audioMood": "..." },
@@ -81,7 +81,8 @@ Important:
           outcome: 'accepted',
         });
 
-        const parsed = JSON.parse(content);
+        const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const parsed = JSON.parse(cleaned);
         return {
           selectedQuote: parsed.selectedQuote,
           creativeBrief: parsed.creativeBrief,
