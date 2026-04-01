@@ -9,27 +9,23 @@ import {
 
 import type { GenerateQuoteContentInput } from './generateQuoteContentInputs';
 import type { GenerateQuoteContentResult } from './generateQuoteContentOutputs';
-import type {
-  GenerateQuoteContentState,
-  QuoteCandidate,
-  SelectedQuote,
-  CreativeBrief,
-  GeneratedAssets,
-  PostDraft,
-} from './generateQuoteContentTypes';
+import type { GenerateQuoteContentState } from './generateQuoteContentTypes';
 
-import type * as activities from '../activities/generateQuoteContentActivities';
+import type * as directorActivities from '../src/activities/directorActivity';
+import type * as publishActivities from '../src/activities/publishActivity';
 
-const {
-  researchQuotes,
-  selectBestQuote,
-  buildCreativeBrief,
-  generateVideoDraft,
-  generatePostDraft,
-  saveDraft,
-  publishToYoutube,
-} = proxyActivities<typeof activities>({
-  startToCloseTimeout: '5 minutes',
+const { runDirectorAgent } = proxyActivities<typeof directorActivities>({
+  startToCloseTimeout: '10 minutes',
+  retry: {
+    initialInterval: '5 seconds',
+    backoffCoefficient: 2,
+    maximumInterval: '60 seconds',
+    maximumAttempts: 3,
+  },
+});
+
+const { publishToYoutubeActivity } = proxyActivities<typeof publishActivities>({
+  startToCloseTimeout: '2 minutes',
   retry: {
     initialInterval: '2 seconds',
     backoffCoefficient: 2,
@@ -81,51 +77,13 @@ export async function generateQuoteContentWorkflow(
       topic: input.topic,
     });
 
-    state.stage = 'RESEARCHING_QUOTES';
-    const quoteCandidates: QuoteCandidate[] = await researchQuotes(input);
+    state.stage = 'RUNNING_DIRECTOR';
+    const directorResult = await runDirectorAgent(input);
 
-    if (!quoteCandidates.length) {
-      throw new Error('No quote candidates returned from research step');
-    }
-
-    state.stage = 'SELECTING_QUOTE';
-    const selectedQuote: SelectedQuote = await selectBestQuote({
-      input,
-      quoteCandidates,
-    });
-    state.selectedQuote = selectedQuote;
-
-    state.stage = 'BUILDING_CREATIVE_BRIEF';
-    const creativeBrief: CreativeBrief = await buildCreativeBrief({
-      input,
-      selectedQuote,
-    });
-    state.creativeBrief = creativeBrief;
-
-    state.stage = 'GENERATING_MEDIA';
-    const assets: GeneratedAssets = await generateVideoDraft({
-      input,
-      selectedQuote,
-      creativeBrief,
-    });
-    state.assets = assets;
-
-    state.stage = 'PREPARING_POST';
-    const post: PostDraft = await generatePostDraft({
-      input,
-      selectedQuote,
-      creativeBrief,
-    });
-    state.post = post;
-
-    state.stage = 'SAVING_DRAFT';
-    await saveDraft({
-      input,
-      selectedQuote,
-      creativeBrief,
-      assets,
-      post,
-    });
+    state.selectedQuote = directorResult.selectedQuote;
+    state.creativeBrief = directorResult.creativeBrief;
+    state.assets = directorResult.assets;
+    state.post = directorResult.post;
 
     if (input.requireApproval) {
       state.stage = 'AWAITING_APPROVAL';
@@ -142,6 +100,7 @@ export async function generateQuoteContentWorkflow(
           post: state.post,
           approvalState: state.approvalState,
           errors: ['Workflow was cancelled while awaiting approval'],
+          directorLog: directorResult.directorLog,
         };
       }
 
@@ -156,6 +115,7 @@ export async function generateQuoteContentWorkflow(
           post: state.post,
           approvalState: state.approvalState,
           errors: ['Draft was rejected'],
+          directorLog: directorResult.directorLog,
         };
       }
     }
@@ -163,13 +123,7 @@ export async function generateQuoteContentWorkflow(
     if (input.mode === 'auto_publish') {
       state.stage = 'PUBLISHING';
 
-      const publishResult = await publishToYoutube({
-        input,
-        selectedQuote: state.selectedQuote!,
-        creativeBrief: state.creativeBrief!,
-        assets: state.assets!,
-        post: state.post!,
-      });
+      const publishResult = await publishToYoutubeActivity(input.requestId);
 
       state.post = {
         ...state.post,
@@ -187,6 +141,7 @@ export async function generateQuoteContentWorkflow(
         post: state.post,
         approvalState: state.approvalState,
         errors: state.errors,
+        directorLog: directorResult.directorLog,
       };
     }
 
@@ -201,6 +156,7 @@ export async function generateQuoteContentWorkflow(
       post: state.post,
       approvalState: state.approvalState,
       errors: state.errors,
+      directorLog: directorResult.directorLog,
     };
   } catch (error) {
     state.stage = 'FAILED';

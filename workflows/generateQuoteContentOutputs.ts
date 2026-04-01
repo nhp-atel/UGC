@@ -8,6 +8,14 @@ import type {
   ApprovalState,
 } from './generateQuoteContentTypes';
 
+export interface DirectorLogEntry {
+  turn: number;
+  action: string;
+  tool?: string;
+  reasoning: string;
+  outcome: 'accepted' | 'retried' | 'adjusted';
+}
+
 export interface GenerateQuoteContentResult {
   workflowStatus: 'COMPLETED' | 'FAILED' | 'AWAITING_APPROVAL' | 'PUBLISHED' | 'CANCELLED' | 'REJECTED';
   requestId: string;
@@ -17,4 +25,5 @@ export interface GenerateQuoteContentResult {
   post?: PostDraft;
   approvalState: ApprovalState;
   errors: string[];
+  directorLog?: DirectorLogEntry[];
 }

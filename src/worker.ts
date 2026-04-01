@@ -1,11 +1,15 @@
 import 'dotenv/config';
 import { Worker } from '@temporalio/worker';
-import * as activities from '../activities/generateQuoteContentActivities';
+import * as directorActivities from './activities/directorActivity';
+import * as publishActivities from './activities/publishActivity';
 
 async function run() {
   const worker = await Worker.create({
     workflowsPath: require.resolve('../workflows/generateQuoteContentWorkflow'),
-    activities,
+    activities: {
+      ...directorActivities,
+      ...publishActivities,
+    },
     taskQueue: 'quote-content-v1',
   });
 
